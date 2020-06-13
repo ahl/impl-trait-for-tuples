@@ -12,7 +12,7 @@ fn is_implemented_for_tuples() {
     fn test<T: EmptyTrait>() {}
 
     test::<()>();
-    test::<(EmptyTraitImpl)>();
+    test::<(EmptyTraitImpl,)>();
     test::<(EmptyTraitImpl, EmptyTraitImpl, EmptyTraitImpl)>();
     test::<(
         EmptyTraitImpl,
@@ -76,7 +76,7 @@ fn is_implemented_for_tuples_with_semi() {
     fn test<T: EmptyTrait>() {}
 
     test::<()>();
-    test::<(EmptyTraitImpl)>();
+    test::<(EmptyTraitImpl,)>();
     test::<(EmptyTraitImpl, EmptyTraitImpl, EmptyTraitImpl)>();
     test::<(
         EmptyTraitImpl,
@@ -195,7 +195,7 @@ fn trait_with_static_functions_and_generics() {
     assert_eq!(0, counter);
 
     let mut counter = 0;
-    test::<(Impl)>(&mut counter);
+    test::<(Impl,)>(&mut counter);
     assert_eq!(1, counter);
 
     let mut counter = 0;
@@ -239,7 +239,7 @@ fn trait_with_return_type() {
     assert_eq!(0, counter);
 
     let mut counter = 0;
-    test::<(Impl)>(&mut counter);
+    test::<(Impl,)>(&mut counter);
     assert_eq!(1, counter);
 
     let mut counter = 0;
@@ -286,9 +286,9 @@ fn trait_with_associated_type() {
     assert_eq!((), res);
 
     let mut counter = 0;
-    let res = test::<(Impl)>(&mut counter);
+    let res = test::<(Impl,)>(&mut counter);
     assert_eq!(1, counter);
-    assert_eq!((1), res);
+    assert_eq!((1,), res);
 
     let mut counter = 0;
     let res = test::<(Impl, Impl, Impl)>(&mut counter);
@@ -336,9 +336,9 @@ fn trait_with_associated_type_and_generics() {
     assert_eq!((), res);
 
     let mut counter = 0;
-    let res = test::<(Impl)>(&mut counter);
+    let res = test::<(Impl,)>(&mut counter);
     assert_eq!(1, counter);
-    assert_eq!((1), res);
+    assert_eq!((1,), res);
 
     let mut counter = 0;
     let res = test::<(Impl, Impl, Impl)>(&mut counter);
@@ -500,4 +500,24 @@ fn test_separators() {
     assert_eq!(<(Impl, Impl, Impl)>::plus(), 15);
     assert_eq!(<(Impl, Impl, Impl)>::star(), 125);
     assert_eq!(<(Impl, Impl, Impl)>::minus(), -1000);
+}
+
+#[test]
+fn test_fn() {
+    trait Handler<In> {
+        fn handle(&self, p: In) -> u32;
+    }
+
+    #[impl_for_tuples(2)]
+    #[tuple_types_not_self(Tuple)]
+    impl<FuncType> Handler<for_tuples!( ( #(Tuple),* ) )> for FuncType
+    where
+        FuncType: Fn(for_tuples!( #(Tuple),* )) -> u32,
+    {
+        for_tuples!( where #( Tuple: Send )* );
+
+        fn handle(&self, p: for_tuples!( ( #(Tuple),*))) -> u32 {
+            (self)(for_tuples!( #(p.Tuple),* ))
+        }
+    }
 }

@@ -16,11 +16,13 @@ use syn::{
     Macro, Member, Result, Stmt, Type, WhereClause, WherePredicate,
 };
 
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 
 /// By default we add the trait bound for the implemented trait to each tuple type. When this
 /// attribute is given we don't add this bound.
 const TUPLE_TYPES_NO_DEFAULT_TRAIT_BOUND: &str = "tuple_types_no_default_trait_bound";
+
+const TUPLE_TYPES_NOT_SELF: &str = "tuple_types_not_self";
 
 /// The supported separators in the `#( Tuple::test() )SEPARATOR*` syntax.
 enum Separator {
@@ -490,11 +492,19 @@ struct ToTupleImplementation<'a> {
 
 impl<'a> ToTupleImplementation<'a> {
     /// Generate the tuple implementation for the given `tuples`.
-    fn generate_implementation(
-        trait_impl: &ItemImpl,
-        tuple_placeholder_ident: &'a Ident,
-        tuples: &'a [Ident],
-    ) -> Result<TokenStream> {
+    fn generate_implementation(trait_impl: &ItemImpl, tuples: &'a [Ident]) -> Result<TokenStream> {
+        let use_self = !trait_impl
+            .attrs
+            .iter()
+            .any(|a| a.path.is_ident(TUPLE_TYPES_NOT_SELF));
+
+        let placeholder_ident = if use_self {
+            extract_tuple_placeholder_ident(&trait_impl)?
+        } else {
+            format_ident!("{}", "Tuple")
+        };
+        let tuple_placeholder_ident = &placeholder_ident;
+
         let mut to_tuple = ToTupleImplementation {
             tuples,
             errors: Vec::new(),
@@ -514,13 +524,25 @@ impl<'a> ToTupleImplementation<'a> {
             res.attrs.remove(pos);
             false
         } else {
-            true
+            true && use_self
+        };
+
+        if let Some(pos) = res
+            .attrs
+            .iter()
+            .position(|a| a.path.is_ident(TUPLE_TYPES_NOT_SELF))
+        {
+            res.attrs.remove(pos);
         };
 
         // Add the tuple generics
         let mut res = add_tuple_elements_generics(tuples, res, add_bound)?;
         // Add the correct self type
-        res.self_ty = parse_quote!( ( #( #tuples, )* ) );
+        if use_self {
+            res.self_ty = parse_quote!( ( #( #tuples, )* ) );
+        } else {
+            res.self_ty = trait_impl.self_ty.clone();
+        }
         res.attrs.push(parse_quote!(#[allow(unused)]));
 
         if let Some(where_clause) = to_tuple.custom_where_clause.take() {
@@ -682,14 +704,11 @@ pub fn semi_automatic_impl(
     tuple_elements: Vec<Ident>,
     min: Option<usize>,
 ) -> Result<TokenStream> {
-    let placeholder_ident = extract_tuple_placeholder_ident(&trait_impl)?;
-
     let mut res = TokenStream::new();
 
     (min.unwrap_or(0)..=tuple_elements.len()).try_for_each(|i| {
         res.extend(ToTupleImplementation::generate_implementation(
             &trait_impl,
-            &placeholder_ident,
             &tuple_elements[..i],
         )?);
         Ok::<_, Error>(())
